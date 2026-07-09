@@ -17,8 +17,8 @@ writing for.
 Requires Python 3.12+. No third-party dependencies.
 
 ```bash
-git clone <this repo>
-cd tron-arena
+git clone <this-repo>
+cd algo_games
 python3 run_tournament.py --bots-dir bots --out results
 ```
 
@@ -54,13 +54,13 @@ python3 run_tournament.py --bots-dir bots --out results \
 
 ## The games
 
-| Game | Folder | Doc | Trains |
-| --- | --- | --- | --- |
-| Tron / light-cycles | `bots/` | [`docs/tron.md`](docs/tron.md) | graph traversal, BFS/DFS |
+| Game                       | Folder           | Doc                                    | Trains                             |
+|----------------------------|------------------|----------------------------------------|------------------------------------|
+| Tron / light-cycles        | `bots/`          | [`docs/tron.md`](docs/tron.md)         | graph traversal, BFS/DFS           |
 | Grid delivery / scheduling | `bots_delivery/` | [`docs/delivery.md`](docs/delivery.md) | priority queues, greedy-vs-optimal |
-| Connect Four | `bots_connect4/` | [`docs/connect4.md`](docs/connect4.md) | minimax, memoization |
-| Resource-constrained grid | `bots_resource/` | [`docs/resource.md`](docs/resource.md) | 0/1 knapsack, DP |
-| Weighted terrain race | `bots_maze/` | [`docs/maze.md`](docs/maze.md) | Dijkstra/A* vs plain BFS |
+| Connect Four               | `bots_connect4/` | [`docs/connect4.md`](docs/connect4.md) | minimax, memoization               |
+| Resource-constrained grid  | `bots_resource/` | [`docs/resource.md`](docs/resource.md) | 0/1 knapsack, DP                   |
+| Weighted terrain race      | `bots_maze/`     | [`docs/maze.md`](docs/maze.md)         | Dijkstra/A* vs plain BFS           |
 
 One line each:
 
@@ -134,35 +134,3 @@ new module implementing that interface and point `run_tournament.py` at it
 with `--game module.path:ClassName`. Nothing in `engine/` has to change, and
 CI picks up a new bots folder by adding one entry to the matrix in
 `.github/workflows/validate_bot.yml`.
-
-## Why every game here is deterministic
-
-Games with any randomness (food spawns, shuffled decks, dice) produce
-leaderboards that are partly noise -- you'd need to average over many matches
-to see whose code is actually better. None of the five game modules above use
-Python's `random` module anywhere: board layouts, job schedules, item
-placements, and terrain maps are all fixed functions of the board size and a
-few parameters, generated with deterministic scatter formulas instead. Given
-the same board and the same bots, a match plays out identically every time.
-The round-robin also plays every pairing twice with starting sides swapped
-where that matters, cancelling out positional advantage so the leaderboard is
-a clean measure of move quality, not draw luck.
-
-## Safety notes for tournament day
-
-Every `decide()` call runs in its own subprocess with a hard timeout, so a
-hung or crashing bot can never freeze the tournament or affect another bot's
-match (see `engine/sandbox.py`). This is implemented with `subprocess.run()`
-rather than Python's `multiprocessing` module specifically so it behaves
-identically on Windows, macOS, and Linux -- `multiprocessing` needs to pickle
-the live bot object across the process boundary, which breaks on Windows for
-bots loaded dynamically from an arbitrary folder. The trade-off is that every
-turn pays the cost of starting a fresh interpreter (tens of milliseconds); for
-a dozen bots a full round-robin still finishes in a couple of minutes, so this
-is a good trade for "works correctly everywhere" over raw speed.
-
-This protects against accidents (hangs, crashes, runaway loops), not against a
-deliberately malicious submission -- with a class of trainees you already
-know, that's a low-stakes concern, but it's still good hygiene to run
-tournament day from a disposable environment (fresh virtualenv, no sensitive
-files nearby) rather than your primary machine.

@@ -1,6 +1,8 @@
 # Connect Four
 
-**Module:** `games/connect4.py` &nbsp;·&nbsp; **Bots folder:** `bots_connect4/` &nbsp;·&nbsp; **Trains:** minimax / game-tree search, memoization
+**Module:** `games/connect4.py`<br/> 
+**Bots folder:** `bots_connect4/`<br/>
+**Trains:** minimax / game-tree search, memoization
 
 ## The game
 
@@ -11,7 +13,7 @@ vertically, or diagonally -- wins. Board full with no winner is a draw.
 This is a different shape of game from the others in this repo: it's
 **turn-based**, not simultaneous, and it's adversarial with perfect
 information and zero randomness. `alive_bots()` returns a single-element
-list -- whichever bot is "to move" -- so the engine only spends a sandboxed
+list - whichever bot is "to move" - so the engine only spends a sandboxed
 subprocess call on the player whose move actually matters that turn.
 
 Actions here are plain **column indices** (an `int`, 0-based, left to
@@ -20,11 +22,11 @@ right), not the `Move` enum used by the other games -- `decide()` should
 
 ## Why it trains what it trains
 
-The entire game state is a small grid with three possible values per cell --
+The entire game state is a small grid with three possible values per cell,
 small enough to search several moves deep inside the timeout, which is
 exactly the point. A bot that only checks "can I win this move / can I block
 an immediate threat" (a shallow, one-ply heuristic) will regularly lose to a
-bot that actually searches the game tree -- minimax, ideally with alpha-beta
+bot that actually searches the game tree, minimax, ideally with alpha-beta
 pruning and a transposition table (memoization) so the same board position
 reached via a different move order isn't re-explored from scratch.
 
@@ -59,7 +61,7 @@ plays leftmost. No real lookahead. Beat it with actual search depth.
 python run_tournament.py --game games.connect4:ConnectFourGame --bots-dir bots_connect4 --out results_connect4 --width 7 --height 6
 ```
 
-Connect Four is strictly 2-player -- a round-robin with more than two loaded
+Connect Four is strictly 2-player - a round-robin with more than two loaded
 bots will still work (every pair plays each other), it just isn't a
 free-for-all like the other games.
 
@@ -67,5 +69,5 @@ free-for-all like the other games.
 
 Add `bots_connect4/<your-first-name>.py` with one class subclassing `Bot`,
 open a PR. See the top-level `CONTRIBUTING.md` for the full branch/PR/CI
-workflow -- it's the same process for every game module, only the target
+workflow - it's the same process for every game module, only the target
 folder changes.
