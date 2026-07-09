@@ -19,7 +19,7 @@ it properly.
    that subclasses `Bot` (see the README's "Writing a bot" section for the
    parts that are the same for every game).
 
-3. Commit and push your branch, then open a pull request against `main`.
+3. Commit and push your branch, then open a pull request against `develop`.
 
 4. A GitHub Action will automatically smoke-test your bot -- it just checks
    that your file imports cleanly and `decide()` runs without crashing or
