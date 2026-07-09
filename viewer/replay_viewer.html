@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tron arena — replay viewer</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #15171a;
+    --panel: #1c1f23;
+    --line: #2b2f35;
+    --text: #e7e6e1;
+    --text-dim: #8b8e93;
+    --accent: #f2a623;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px 64px;
+    gap: 20px;
+  }
+  h1 {
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 0;
+  }
+  .load-row { display: flex; gap: 10px; align-items: center; }
+  input[type="file"] { color: var(--text); font-family: inherit; font-size: 13px; }
+  #board {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    max-width: 100%;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    max-width: 640px;
+  }
+  button {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  input[type="range"] { flex: 1; accent-color: var(--accent); }
+  #turnLabel { font-size: 13px; color: var(--text-dim); min-width: 90px; text-align: right; }
+  #legend {
+    display: flex;
+    gap: 18px;
+    font-size: 13px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 640px;
+  }
+  .swatch { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  #status { font-size: 13px; color: var(--text-dim); min-height: 18px; }
+  #status.result { color: var(--accent); }
+  #gameLabel { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+</style>
+</head>
+<body>
+  <h1>Tron arena — replay viewer</h1>
+  <div class="load-row">
+    <input id="fileInput" type="file" accept="application/json">
+    <span id="status">Load a replay .json from any game's results/replays/</span>
+  </div>
+  <span id="gameLabel"></span>
+  <canvas id="board" width="640" height="640"></canvas>
+  <div class="controls">
+    <button id="playBtn" disabled>Play</button>
+    <button id="stepBackBtn" disabled>&larr;</button>
+    <button id="stepFwdBtn" disabled>&rarr;</button>
+    <input id="scrubber" type="range" min="0" max="0" value="0" disabled>
+    <span id="turnLabel">turn 0 / 0</span>
+  </div>
+  <div id="legend"></div>
+
+<script>
+const PALETTE = ["#5dcaa5", "#f2a623", "#d4537e", "#378add", "#e24b4a",
+                  "#7f77dd", "#639922", "#f0997b", "#ba7517", "#85b7eb", "#93d1ed"];
+
+let frames = [];
+let players = [];
+let winners = [];
+let colorOf = {};
+let current = 0;
+let playing = false;
+let timer = null;
+let gameType = "unknown";
+let cachedTerrain = null;   // maze: only frame 0 carries the terrain grid
+let maxTerrainCost = 1;
+
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const fileInput = document.getElementById("fileInput");
+const playBtn = document.getElementById("playBtn");
+const stepBackBtn = document.getElementById("stepBackBtn");
+const stepFwdBtn = document.getElementById("stepFwdBtn");
+const scrubber = document.getElementById("scrubber");
+const turnLabel = document.getElementById("turnLabel");
+const statusEl = document.getElementById("status");
+const legendEl = document.getElementById("legend");
+const gameLabelEl = document.getElementById("gameLabel");
+
+fileInput.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const data = JSON.parse(await file.text());
+  loadReplay(data);
+});
+
+// --- Detecting which game a replay belongs to -----------------------------
+// Every game's frame() has a different, distinctive set of keys. Checked
+// in an order that disambiguates them unambiguously (e.g. maze and tron
+// both eventually carry "positions", but only maze has "goal").
+
+function detectGameType(frame) {
+  if ("board" in frame) return "connect4";
+  if ("goal" in frame) return "maze";
+  if ("jobs" in frame) return "delivery";
+  if ("items" in frame) return "resource";
+  if ("walls" in frame) return "tron";
+  return "unknown";
+}
+
+const GAME_LABELS = {
+  tron: "Tron / light-cycles",
+  delivery: "Grid delivery",
+  connect4: "Connect Four",
+  resource: "Resource-constrained grid",
+  maze: "Weighted terrain race",
+  unknown: "Unrecognised replay format",
+};
+
+function loadReplay(data) {
+  frames = data.frames || [];
+  players = data.players || [];
+  winners = data.winners || [];
+  colorOf = {};
+  players.forEach((p, i) => { colorOf[p] = PALETTE[i % PALETTE.length]; });
+  current = 0;
+  playing = false;
+  cachedTerrain = null;
+  maxTerrainCost = 1;
+  clearInterval(timer);
+
+  gameType = frames.length ? detectGameType(frames[0]) : "unknown";
+  gameLabelEl.textContent = GAME_LABELS[gameType];
+
+  if (gameType === "maze" && frames.length && frames[0].terrain) {
+    cachedTerrain = frames[0].terrain;
+    maxTerrainCost = Math.max(1, ...cachedTerrain.flat());
+  }
+
+  scrubber.max = Math.max(frames.length - 1, 0);
+  scrubber.value = 0;
+  scrubber.disabled = frames.length === 0;
+  playBtn.disabled = stepBackBtn.disabled = stepFwdBtn.disabled = frames.length === 0;
+  playBtn.textContent = "Play";
+
+  render();
+}
+
+// --- Shared board scaffolding ----------------------------------------------
+
+function clearBoard(width, height) {
+  const cell = Math.floor(Math.min(canvas.width / width, canvas.height / height));
+  ctx.fillStyle = "#1c1f23";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "#2b2f35";
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= width; x++) {
+    ctx.beginPath(); ctx.moveTo(x * cell + 0.5, 0); ctx.lineTo(x * cell + 0.5, height * cell); ctx.stroke();
+  }
+  for (let y = 0; y <= height; y++) {
+    ctx.beginPath(); ctx.moveTo(0, y * cell + 0.5); ctx.lineTo(width * cell, y * cell + 0.5); ctx.stroke();
+  }
+  return cell;
+}
+
+function fillCell(x, y, cell, color, alpha = 1) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
+  ctx.globalAlpha = 1;
+}
+
+function strokeCellMarker(x, y, cell, color, shape) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  const pad = cell * 0.22;
+  ctx.beginPath();
+  if (shape === "diamond") {
+    const cx = x * cell + cell / 2, cy = y * cell + cell / 2, r = cell / 2 - pad;
+    ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy); ctx.closePath();
+  } else {
+    ctx.rect(x * cell + pad, y * cell + pad, cell - 2 * pad, cell - 2 * pad);
+  }
+  ctx.stroke();
+}
+
+function drawDotAtPixel(px, py, radius, color, alpha = 1) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(px, py, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawDot(x, y, cell, color, alpha = 1) {
+  drawDotAtPixel(x * cell + cell / 2, y * cell + cell / 2, cell * 0.32, color, alpha);
+}
+
+// Multiple bots can legally occupy the same cell in delivery, resource,
+// and maze (there's no collision death in those games, and maze in
+// particular starts every single bot on the exact same cell). Drawing
+// one full-size dot per bot at the cell centre would just paint later
+// bots over earlier ones -- so when more than one bot shares a cell,
+// spread them around a small circle inside it instead of stacking them.
+function drawBotCluster(x, y, cell, botIds, dimSet) {
+  if (botIds.length === 1) {
+    const bot = botIds[0];
+    drawDot(x, y, cell, colorOf[bot] || "#888", dimSet.has(bot) ? 0.55 : 1);
+    return;
+  }
+  const centerX = x * cell + cell / 2, centerY = y * cell + cell / 2;
+  const clusterRadius = cell * 0.24;
+  const dotRadius = Math.max(cell * 0.15, 3);
+  botIds.forEach((bot, i) => {
+    const angle = (2 * Math.PI * i) / botIds.length - Math.PI / 2;
+    const px = centerX + clusterRadius * Math.cos(angle);
+    const py = centerY + clusterRadius * Math.sin(angle);
+    drawDotAtPixel(px, py, dotRadius, colorOf[bot] || "#888", dimSet.has(bot) ? 0.55 : 1);
+  });
+}
+
+// Groups a {bot_id: [x, y]} positions map by cell, so callers can hand
+// every bot sharing a cell to drawBotCluster() in one call.
+function groupByCell(positions) {
+  const groups = new Map();
+  Object.entries(positions || {}).forEach(([bot, [x, y]]) => {
+    const key = `${x},${y}`;
+    if (!groups.has(key)) groups.set(key, { x, y, bots: [] });
+    groups.get(key).bots.push(bot);
+  });
+  return [...groups.values()];
+}
+
+// --- Per-game renderers ------------------------------------------------------
+// Each takes the current frame and draws the board + pieces. All movement
+// games share the same grid scaffolding; only what gets drawn on top differs.
+
+function renderTron(frame) {
+  const cell = clearBoard(frame.width, frame.height);
+  (frame.walls || []).forEach(([x, y]) => fillCell(x, y, cell, "#33373d"));
+  Object.entries(frame.positions || {}).forEach(([bot, [x, y]]) => {
+    const alive = (frame.alive || []).includes(bot);
+    const died = (frame.died || []).includes(bot);
+    fillCell(x, y, cell, colorOf[bot] || "#888", alive ? 1 : died ? 0.5 : 0.15);
+  });
+}
+
+function renderDelivery(frame) {
+  const cell = clearBoard(frame.width, frame.height);
+  (frame.jobs || []).forEach((job) => {
+    const color = job.claimed_by ? (colorOf[job.claimed_by] || "#888") : "#5a5f66";
+    strokeCellMarker(job.pickup[0], job.pickup[1], cell, color, "square");
+    strokeCellMarker(job.dropoff[0], job.dropoff[1], cell, color, "diamond");
+  });
+  groupByCell(frame.positions).forEach(({ x, y, bots }) => {
+    drawBotCluster(x, y, cell, bots, new Set());
+  });
+}
+
+function renderResource(frame) {
+  const cell = clearBoard(frame.width, frame.height);
+  (frame.items || []).forEach((item) => {
+    const [x, y] = item.position;
+    drawDotAtPixel(x * cell + cell / 2, y * cell + cell / 2, cell * 0.18, "#5a5f66");
+  });
+  const outOfBudget = new Set(
+    Object.keys(frame.moves_left || {}).filter((b) => frame.moves_left[b] <= 0)
+  );
+  groupByCell(frame.positions).forEach(({ x, y, bots }) => {
+    drawBotCluster(x, y, cell, bots, outOfBudget);
+  });
+}
+
+function renderConnect4(frame) {
+  const cell = clearBoard(frame.width, frame.height);
+  const board = frame.board || [];
+  for (let row = 0; row < board.length; row++) {
+    for (let col = 0; col < board[row].length; col++) {
+      const occupant = board[row][col];
+      const cx = col * cell + cell / 2, cy = row * cell + cell / 2, r = cell * 0.36;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      if (occupant) {
+        ctx.fillStyle = colorOf[occupant] || "#888";
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = "#2b2f35";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function renderMaze(frame) {
+  const cell = clearBoard(frame.width, frame.height);
+  const terrain = cachedTerrain;
+  if (terrain) {
+    for (let y = 0; y < terrain.length; y++) {
+      for (let x = 0; x < terrain[y].length; x++) {
+        const cost = terrain[y][x];
+        if (cost > 1) {
+          const intensity = 0.15 + 0.45 * (cost / maxTerrainCost);
+          ctx.globalAlpha = intensity;
+          ctx.fillStyle = "#e2483d";
+          ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+  }
+  if (frame.goal) {
+    strokeCellMarker(frame.goal[0], frame.goal[1], cell, "#f2a623", "diamond");
+  }
+  const busy = new Set(
+    Object.keys(frame.busy_for || {}).filter((b) => frame.busy_for[b] > 0)
+  );
+  groupByCell(frame.positions).forEach(({ x, y, bots }) => {
+    drawBotCluster(x, y, cell, bots, busy);
+  });
+}
+
+const RENDERERS = {
+  tron: renderTron,
+  delivery: renderDelivery,
+  resource: renderResource,
+  connect4: renderConnect4,
+  maze: renderMaze,
+};
+
+// --- Per-game legend / status -----------------------------------------------
+// Score-based games show a live-updating readout per bot; win/lose games
+// show a static winner tag plus per-frame alive/finished state.
+
+function renderLegend(frame) {
+  legendEl.innerHTML = "";
+  players.forEach((p) => {
+    const span = document.createElement("span");
+    span.className = "swatch";
+    let extra = "";
+
+    if (gameType === "delivery" || gameType === "resource") {
+      const score = frame.score ? frame.score[p] : undefined;
+      extra = score !== undefined ? ` — score ${score}` : "";
+    } else if (gameType === "tron") {
+      const alive = (frame.alive || []).includes(p);
+      extra = alive ? "" : " (out)";
+    } else if (gameType === "maze") {
+      const finished = (frame.finished || []).includes(p);
+      extra = finished ? " (finished)" : "";
+    }
+
+    const isWinner = current === frames.length - 1 && winners.includes(p);
+    span.innerHTML = `<span class="dot" style="background:${colorOf[p]}"></span>${p}${extra}${isWinner ? " ★" : ""}`;
+    legendEl.appendChild(span);
+  });
+}
+
+function statusText(frame, isLastFrame) {
+  if (!isLastFrame) return `frame ${current + 1} of ${frames.length}`;
+
+  if (gameType === "connect4") {
+    if (frame.winner) return `${frame.winner} wins`;
+    if (frame.draw) return "draw -- board full";
+    return "match ended";
+  }
+  if (gameType === "maze") {
+    return winners.length ? `${winners[0]} reaches the goal first` : "draw -- nobody finished in time";
+  }
+  if (gameType === "delivery" || gameType === "resource") {
+    if (!winners.length) return "draw -- tied score";
+    return winners.length === 1 ? `${winners[0]} wins on score` : `draw between ${winners.join(", ")}`;
+  }
+  // tron
+  return frame.alive && frame.alive.length === 1 ? `${frame.alive[0]} wins` : "match ended in a draw";
+}
+
+// --- Render loop -------------------------------------------------------------
+
+function render() {
+  if (!frames.length) return;
+  const frame = frames[current];
+  const renderer = RENDERERS[gameType];
+  if (renderer) {
+    renderer(frame);
+  } else {
+    ctx.fillStyle = "#1c1f23";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  renderLegend(frame);
+
+  turnLabel.textContent = `turn ${frame.turn} / ${frames[frames.length - 1].turn}`;
+  scrubber.value = current;
+
+  const isLastFrame = current === frames.length - 1;
+  statusEl.textContent = statusText(frame, isLastFrame);
+  statusEl.classList.toggle("result", isLastFrame);
+}
+
+function step(delta) {
+  current = Math.min(Math.max(current + delta, 0), frames.length - 1);
+  render();
+}
+
+playBtn.addEventListener("click", () => {
+  playing = !playing;
+  playBtn.textContent = playing ? "Pause" : "Play";
+  if (playing) {
+    timer = setInterval(() => {
+      if (current >= frames.length - 1) { playing = false; playBtn.textContent = "Play"; clearInterval(timer); return; }
+      step(1);
+    }, 120);
+  } else {
+    clearInterval(timer);
+  }
+});
+stepBackBtn.addEventListener("click", () => step(-1));
+stepFwdBtn.addEventListener("click", () => step(1));
+scrubber.addEventListener("input", () => { current = Number(scrubber.value); render(); });
+</script>
+</body>
+</html>

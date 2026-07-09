@@ -1,0 +1,49 @@
+name: Validate bot submission
+
+on:
+  pull_request:
+    paths:
+      - "bots/**.py"
+      - "bots_delivery/**.py"
+      - "bots_connect4/**.py"
+      - "bots_resource/**.py"
+      - "bots_maze/**.py"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - bots_dir: bots
+            game: games.tron:TronGame
+            width: 21
+            height: 21
+          - bots_dir: bots_delivery
+            game: games.delivery:DeliveryGame
+            width: 20
+            height: 20
+          - bots_dir: bots_connect4
+            game: games.connect4:ConnectFourGame
+            width: 7
+            height: 6
+          - bots_dir: bots_resource
+            game: games.resource:ResourceGame
+            width: 20
+            height: 20
+          - bots_dir: bots_maze
+            game: games.maze:MazeGame
+            width: 21
+            height: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Smoke-test every bot in ${{ matrix.bots_dir }}/
+        run: >
+          python engine/validate_ci.py
+          --bots-dir ${{ matrix.bots_dir }}
+          --game ${{ matrix.game }}
+          --width ${{ matrix.width }}
+          --height ${{ matrix.height }}
