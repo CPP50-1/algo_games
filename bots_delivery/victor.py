@@ -26,7 +26,7 @@ def _step_toward(position, target):
     return Move.UP  # already there -- direction doesn't matter this turn
 
 
-class ExampleDeliveryBot(Bot):
+class VictorDeliveryBot(Bot):
     def decide(self, state) -> Move:
         if state.carrying is not None:
             return _step_toward(state.position, state.carrying.dropoff)
