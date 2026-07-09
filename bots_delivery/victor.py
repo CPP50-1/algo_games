@@ -15,14 +15,14 @@ from games.delivery import Job
 def _step_toward(position, target):
     dx = target[0] - position[0]
     dy = target[1] - position[1]
-    if dx > 0:
-        return Move.RIGHT
-    if dx < 0:
-        return Move.LEFT
     if dy > 0:
         return Move.DOWN
     if dy < 0:
         return Move.UP
+    if dx > 0:
+        return Move.RIGHT
+    if dx < 0:
+        return Move.LEFT
     return Move.UP  # already there -- direction doesn't matter this turn
 
 
@@ -49,4 +49,4 @@ class ExampleDeliveryBot(Bot):
         if best_job:
             return _step_toward(state.position, best_job.pickup)
         else:
-            return Move.UP
+            return _step_toward(state.position, (state.height/2, state.width/2))
