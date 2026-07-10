@@ -68,7 +68,8 @@ def call_with_timeout(
         proc = subprocess.run(
             [sys.executable, _RUNNER],
             input=payload,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=None,
             text=True,
             encoding="utf-8",
             timeout=timeout,
