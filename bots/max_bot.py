@@ -6,10 +6,6 @@ class MaxBot(Bot):
     def decide(self, state) -> Move:
         me = state.positions[state.self_id]
 
-        other_positions = [
-            pos for bid, pos in state.positions.items() if bid != state.self_id
-        ]
-
         walls = set(state.walls)
         walls.update(state.positions.values())
 
