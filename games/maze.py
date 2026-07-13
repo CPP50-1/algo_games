@@ -182,7 +182,7 @@ class MazeGame(Game):
         return bool(self._finish_order) or self._turn >= self.max_turns
 
     def winners(self) -> List[str]:
-        return [self._finish_order[0]] if self._finish_order else []
+        return self._finish_order if self._finish_order else []
 
     def frame(self) -> Dict:
         return {

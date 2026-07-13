@@ -7,17 +7,27 @@ def _dijkstra_next_step(position, goal, width, height, terrain):
         return None
 
     best = {position: 0}
-    p = [(0, position, None)]
+    pq = [(0, position, None)]
 
-    while p:
-        dist, pos, step = heapq.heappop(p)
+    while pq:
+        dist, pos, step = heapq.heappop(pq)
         if dist > best.get(pos, float("inf")):
             continue
         if pos == goal:
             return step
 
-    return None
+        x, y = pos
+        for move in Move:
+            nxt = (x + move.dx, y + move.dy)
+            nx, ny = nxt
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            nd = dist + terrain[ny][nx]
+            if nd < best.get(nxt, float("inf")):
+                best[nxt] = nd
+                heapq.heappush(pq, (nd, nxt, step or nxt))
 
+    return None
 
 class MazeBot(Bot):
     def decide(self, state) -> Move:
