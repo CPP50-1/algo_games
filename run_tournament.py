@@ -22,8 +22,11 @@ This "@file" form works identically on every OS, so it's the safest
 default to reach for even outside Windows.
 
 Loads every bot in --bots-dir, runs a full round-robin (each pair of
-bots plays twice, sides swapped), writes a leaderboard and one replay
-JSON per match into --out, and prints the final standings.
+bots plays twice, sides swapped), and writes a leaderboard and one
+replay JSON per match into a fresh, timestamped subfolder under --out
+(e.g. results/20260709-143205/) -- every run gets its own folder, so
+nothing from an earlier run is ever overwritten and there's nothing to
+manually clean up between runs.
 
 Add --finale to also run a single all-vs-all free-for-all after the
 round-robin, for a live finale you can project on screen. (For a
@@ -35,11 +38,31 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime
 from pathlib import Path
 
 from engine.loader import load_bots
 from engine.tournament import free_for_all, round_robin
 from engine.game_loader import load_class
+
+
+def _make_run_dir(base: str) -> Path:
+    """Creates and returns a fresh, never-before-used directory under
+    `base`, named after the current timestamp -- so every run's results
+    land in their own folder and nothing from a previous run is ever
+    overwritten or needs to be manually deleted first. Falls back to
+    appending -2, -3, etc. in the rare case two runs start in the same
+    second.
+    """
+    base_path = Path(base)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_dir = base_path / stamp
+    suffix = 1
+    while run_dir.exists():
+        suffix += 1
+        run_dir = base_path / f"{stamp}-{suffix}"
+    run_dir.mkdir(parents=True)
+    return run_dir
 
 
 def _load_game_kwargs(value: str) -> dict:
@@ -75,7 +98,12 @@ def _load_game_kwargs(value: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--bots-dir", default="bots", help="folder containing one .py file per bot")
-    parser.add_argument("--out", default="results", help="folder to write leaderboard + replays into")
+    parser.add_argument(
+        "--out", default="results",
+        help="base folder for results -- each run gets its own timestamped subfolder "
+             "underneath it (e.g. results/20260709-143205/), so nothing from a "
+             "previous run is ever overwritten",
+    )
     parser.add_argument(
         "--game", default="games.tron:TronGame",
         help="which game module to run, as 'module.path:ClassName' (default: games.tron:TronGame)",
@@ -110,12 +138,11 @@ def main() -> None:
     print(f"Game: {args.game}")
     print(f"Loaded {len(bots)} bots: {', '.join(bots)}\n")
 
-    out_dir = Path(args.out)
+    out_dir = _make_run_dir(args.out)
     leaderboard, match_log = round_robin(
         bots, game_cls, game_kwargs, timeout=args.timeout, replay_dir=str(out_dir / "replays")
     )
 
-    out_dir.mkdir(parents=True, exist_ok=True)
     # encoding="utf-8" explicitly -- don't rely on Windows' locale-
     # dependent default when bot ids/names might contain accents.
     (out_dir / "leaderboard.json").write_text(json.dumps(leaderboard, indent=2), encoding="utf-8")
