@@ -1,6 +1,14 @@
 import sys
 import math
+import tempfile
 from engine.bot import Bot
+
+_LOG_PATH = tempfile.gettempdir() + "/theophile_connect4_bot.log"
+
+
+def _log(message: str) -> None:
+    with open(_LOG_PATH, "a", encoding="utf-8") as log_file:
+        log_file.write(message + "\n")
 
 def _render_board(state) -> str:
     symbol_for = {
@@ -8,14 +16,13 @@ def _render_board(state) -> str:
         state.self_id: "X",
         state.opponent_id: "O",
     }
-    legal_columns = set(state.legal_columns)
     lines = ["    " + " ".join(f"{col:^3}" for col in range(state.width))]
     lines.append("   +" + "---+" * state.width)
     for row_index, row in enumerate(state.board):
         rendered_row = " | ".join(symbol_for.get(cell, "?") for cell in row)
         legal_marker = (
             "*"
-            if any(col in legal_columns for col, cell in enumerate(row) if cell is None)
+            if any(col in state.legal_columns for col, cell in enumerate(row) if cell is None)
             else " "
         )
         lines.append(f"{row_index:>2}{legal_marker}| {rendered_row} |")
@@ -23,58 +30,87 @@ def _render_board(state) -> str:
     lines.append(
         "    "
         + " ".join(
-            " ^ " if col in legal_columns else "   " for col in range(state.width)
+            " ^ " if col in state.legal_columns else "   " for col in range(state.width)
         )
     )
     return "\n".join(lines)
 
-def _drop_row(board, column):
+def _drop_row(board, column)-> int | None:
+    """
+    Return the lowest empty row index in ``column``.
+    The board is expected to be a 2D list indexed as ``board[row][column]``
+    with row 0 at the top. Returns ``None`` if the column is full.
+    """
+    
     for row in range(len(board) - 1, -1, -1):
         if board[row][column] is None: 
             return row
     return None
 
 def winning_move(board, piece):
+    """
+    Return True if ``piece`` has four in a row on ``board``.
+
+    The board is a 2D list indexed as ``board[row][column]`` with row 0
+    at the top. The function checks horizontal, vertical, and both
+    diagonal directions.
+    """
+    
     ROWS = len(board)
     COLS = len(board[0])
-    
-    for c in range(COLS - 3):
-        for r in range(ROWS):
-            if board[r][c] == piece and board[r][c+1] == piece and board[r][c+2] == piece and board[r][c+3] == piece:
-                return True
-    for c in range(COLS):
-        for r in range(ROWS - 3):
-            if board[r][c] == piece and board[r+1][c] == piece and board[r+2][c] == piece and board[r+3][c] == piece:
-                return True
-    for c in range(COLS - 3):
-        for r in range(3, ROWS):
-            if board[r][c] == piece and board[r-1][c+1] == piece and board[r-2][c+2] == piece and board[r-3][c+3] == piece:
-                return True
-    for c in range(COLS - 3):
-        for r in range(ROWS - 3):
-            if board[r][c] == piece and board[r+1][c+1] == piece and board[r+2][c+2] == piece and board[r+3][c+3] == piece:
-                return True
+        
+    # right (0,1), down (1,0), down-right (1,1), down-left (1,-1)'
+    directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+
+    for row in range(ROWS):
+        for col in range(COLS):
+            if board[row][col] != piece:
+                continue
+            for dr, dc in directions:
+                # Walk four cells in one direction and stop if any cell is
+                # out of bounds or belongs to the other player.
+                if all(
+                        # row + k * dr / col + k * dc picks the next cell in
+                        # the current direction, one step at a time.
+                        # Stay inside the board horizontally and vertically.
+                        0 <= row + k * dr < ROWS
+                    and 0 <= col + k * dc < COLS
+                    # Every cell in this line must belong to the same piece.
+                    and board[row + k * dr][col + k * dc] == piece
+                    for k in range(4)
+                ):
+                    return True
     return False
 
 def evaluate_window(window, self_id, opponent_id):
+    """Score a 4-cell window from the point of view of ``self_id``.
+
+    Positive scores favor our pieces, negative scores favor the opponent.
+    The score gets larger when a window is close to becoming four in a row
+    and smaller when it helps the opponent do the same.
+    """
+
     score = 0
     self_count = window.count(self_id)
     opp_count = window.count(opponent_id)
-    empty_count = window.count(None) 
+    empty_count = window.count(None)
+    
+    # (piece_count, empty_count)
+    self_pattern_score = {
+        (3, 1): 1000,
+        (2, 2): 10,
+        (1, 3): 1,
+    }
 
-    if self_count == 3 and empty_count == 1:
-        score += 1000
-    elif self_count == 2 and empty_count == 2:
-        score += 10
-    elif self_count == 1 and empty_count == 3:
-        score += 1
+    # Slightly stronger penalties make the bot prioritize blocking threats.
+    opp_pattern_score = {
+        (3, 1): 1000,
+        (2, 2): 10,
+        (1, 3): 1,
+    }
 
-    if opp_count == 3 and empty_count == 1:
-        score -= 1000
-    elif opp_count == 2 and empty_count == 2:
-        score -= 10
-    elif opp_count == 1 and empty_count == 3:
-        score -= 1
+    score += self_pattern_score.get((self_count, empty_count), 0)
+    score -= opp_pattern_score.get((opp_count, empty_count), 0)
 
     return score
 
@@ -120,14 +156,14 @@ def is_terminal_node(board, self_id, opponent_id):
 
 class TheophileConnect4Bot(Bot):
     def __init__(self):
-        # On peut sereinement passer à 5 grâce à la mémoire
-        self.depth = 11
-        # Notre Table de Transposition
+        self.depth = 6
+        # Table de Transposition
         self.tt = {}
+        _log("bot initialised")
 
     def minimax(self, board, depth, alpha, beta, maximizing_player, self_id, opponent_id):
         # ---------------------------------------------------------
-        # 1. LA MÉMOIRE (Recherche dans la Table de Transposition)
+        # 1. Table de Transposition
         # ---------------------------------------------------------
         original_alpha = alpha
         original_beta = beta
@@ -219,7 +255,7 @@ class TheophileConnect4Bot(Bot):
                     break 
 
         # ---------------------------------------------------------
-        # 2. LA SAUVEGARDE (Mise en cache du résultat avant de retourner)
+        # 2. Mise en cache du résultat avant de retourner
         # ---------------------------------------------------------
         flag = 'EXACT'
         if value <= original_alpha:
@@ -238,10 +274,11 @@ class TheophileConnect4Bot(Bot):
         return best_col, value
 
     def decide(self, state) -> int:
-        # Nettoyage de la RAM : si la mémoire stocke trop de grilles, on la vide
-        # pour éviter que ton PC ne sature en tournoi long.
+        # Nettoyage de la RAM
         if len(self.tt) > 500000:
             self.tt.clear()
+
+        _log(f"turn={state.turn} self={state.self_id} opponent={state.opponent_id}")
 
         print(
             f"self={state.self_id} opponent={state.opponent_id} turn={state.turn}\n{_render_board(state)}",
@@ -267,6 +304,8 @@ class TheophileConnect4Bot(Bot):
         )
         
         if best_col is None or best_col not in state.legal_columns:
+            _log(f"chosen={state.legal_columns[0]} reason=fallback")
             return state.legal_columns[0]
             
+        _log(f"chosen={best_col} reason=minimax")
         return best_col
