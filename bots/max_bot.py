@@ -1,3 +1,9 @@
+"""
+max_bot: picks the move that maximises reachable open space via flood fill.
+1. Avoid obstacles — checks bounds, walls, and opponent proximity (Manhattan ≤ 1).
+2. Evaluate space — BFS flood fill from each safe candidate cell.
+3. Pick best — direction with the largest reachable area wins.
+"""
 from engine.bot import Bot, Move
 from collections import deque
 
@@ -5,6 +11,10 @@ from collections import deque
 class MaxBot(Bot):
     def decide(self, state) -> Move:
         me = state.positions[state.self_id]
+
+        other_positions = [
+            pos for bid, pos in state.positions.items() if bid != state.self_id
+        ]
 
         walls = set(state.walls)
         walls.update(state.positions.values())
@@ -17,11 +27,9 @@ class MaxBot(Bot):
                 return False
             if (x, y) in state.walls:
                 return False
-            # adjacent_tiles = self._adjacent(self, x, y)
-            # for tile in adjacent_tiles:
-            #     if tile in other_positions:
-            #         return False
-
+            for ox, oy in other_positions:
+                if abs(x - ox) + abs(y - oy) <= 1:
+                    return False
             return True
 
         for move in Move:
@@ -53,6 +61,3 @@ class MaxBot(Bot):
                 seen.add((nx, ny))
                 q.append((nx, ny))
         return len(seen)
-
-    def _adjacent(self, x, y) -> list[tuple[int, int]]:
-        return [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
