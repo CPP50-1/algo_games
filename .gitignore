@@ -219,8 +219,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
-# -------------------------------- personnal ------------------------------- 
-.opencode/
-graphify-out/
-AGENTS.md
