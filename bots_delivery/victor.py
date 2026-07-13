@@ -31,22 +31,36 @@ class VictorDeliveryBot(Bot):
         if state.carrying is not None:
             return _step_toward(state.position, state.carrying.dropoff)
 
+        def get_best_job():
+            best_ratio = 0.0
+            best_job: Job | None = None
+            position = state.position
+            for job in available:
+                first_to_job = True
+                distance_to_reach = abs(job.pickup[0] - position[0]) + abs(job.pickup[1] - position[1])
+                for enemy in state.positions.keys():
+                    if enemy != state.self_id:
+                        enemy_position = state.positions[enemy]
+                        distance_from_enemy = abs(job.pickup[0] - enemy_position[0]) + abs(job.pickup[1] - enemy_position[1])
+                        if distance_to_reach > distance_from_enemy:
+                            first_to_job = False
+                if not first_to_job:
+                    continue
+                distance_to_complete = abs(job.pickup[0] - job.dropoff[0]) + abs(job.pickup[1] - job.dropoff[0])
+                if job.deadline > distance_to_reach + distance_to_complete:
+                    time_value_ratio = job.value / (distance_to_reach + distance_to_complete)
+                    if time_value_ratio > best_ratio:
+                        best_ratio = time_value_ratio
+                        best_job = job
+            return best_job
+
         available = [j for j in state.jobs if j.claimed_by is None]
         if not available:
-            return Move.UP  # nothing to do -- direction is irrelevant
+            return _step_toward(state.position, (int(state.height/2), int(state.width/2)))
 
-        best_ratio = 0.0
-        best_job: Job | None = None
-        for job in available:
-            distance_to_reach = abs(job.pickup[0] - state.position[0]) + abs(job.pickup[1] - state.position[1])
-            distance_to_complete = abs(job.pickup[0] - job.dropoff[0]) + abs(job.pickup[1] - job.dropoff[0])
-            if job.deadline > distance_to_reach+distance_to_complete:
-                time_value_ratio = job.value / (distance_to_reach + distance_to_complete)
-                if time_value_ratio > best_ratio:
-                    best_ratio = time_value_ratio
-                    best_job = job
+        target_job = get_best_job()
 
-        if best_job:
-            return _step_toward(state.position, best_job.pickup)
+        if target_job:
+            return _step_toward(state.position, target_job.pickup)
         else:
-            return _step_toward(state.position, (state.height/2, state.width/2))
+            return _step_toward(state.position, (int(state.height/2), int(state.width/2)))
