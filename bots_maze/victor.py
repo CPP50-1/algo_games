@@ -10,7 +10,9 @@ loses to anything that instead finds the shortest path *by weight*
 (Dijkstra, or A* with an admissible heuristic).
 """
 import heapq
+import json
 from collections import deque
+from pathlib import Path
 
 from engine.bot import Bot, Move
 
@@ -36,12 +38,13 @@ class VictorMazeBot(Bot):
     when reaching objective, return path.
     Use paths next turns
     """
-    _path : deque
 
 
     def decide(self, state) -> Move:
 
         my_pos = state.position
+        scratch = Path(f"/tmp/{state.self_id}_memory.json")
+        memory = json.loads(scratch.read_text()) if scratch.exists() else []
 
         def build_path(state):
 
@@ -68,9 +71,8 @@ class VictorMazeBot(Bot):
                 current_cell = heapq.heappop(next_cells)
                 visited_cells.append(current_cell[1])
                 if current_cell[1] == state.goal:
-                    # if we reached the goal, we return the path
-                    path = deque(current_cell[2])
-                    self._path = path
+                    # if we reached the goal, we save the path
+                    memory.extend(current_cell[2])
                     break
                 for neighbor_cell in grid[current_cell[1]]:
                     if neighbor_cell[0] not in visited_cells:
@@ -91,8 +93,13 @@ class VictorMazeBot(Bot):
                 return Move.UP
 
 
-        build_path(state)
+        if state.turn == 0:
+            build_path(state)
 
-        return step_toward(my_pos, self._path.popleft())
+        final_path = deque(memory)
+        move = step_toward(my_pos, final_path.popleft())
+        scratch.write_text(json.dumps(list(final_path)))
 
+
+        return move
 
