@@ -63,16 +63,30 @@ class VictorBot(Bot):
                 return False
             return not bool(grid[(x, y)])
 
+        def is_dangerous(move: Move) -> bool:
+            x, y = my_pos[0] + move.dx, my_pos[1] + move.dy
+            if move.dy:
+                if grid[(x + 1, y)] and grid[(x - 1, y)]:
+                    return False
+            else:
+                if grid[(x, y + 1)] and grid[(x, y - 1)]:
+                    return False
+            return True
+
         def safe_move() -> Move:
             if get_distance(enemy) <=4:
                 if current_positions[enemy][1] == my_pos[1]:
                     return Move.UP if is_safe(Move.UP) else Move.DOWN
                 if current_positions[enemy][0] == my_pos[0]:
                     return Move.LEFT if is_safe(Move.LEFT) else Move.RIGHT
+            safe_moves = []
             for move in (Move.UP, Move.RIGHT, Move.DOWN, Move.LEFT):
                 if is_safe(move):
+                    safe_moves.append(move)
+            for move in safe_moves:
+                if not is_dangerous(move):
                     return move
-            return Move.LEFT
+            return safe_moves[0]
 
         def _step_toward(position, target):
             dx = target[0] - position[0]
