@@ -34,7 +34,7 @@ def distance(position1, position2):
     return abs(position1[0] - position2[0]) + abs(position1[1] - position2[1])
 
 
-class AlainDelivery(Bot):
+class AlainDeliveryBot(Bot):
 
     def decide(self, state) -> Move:
 

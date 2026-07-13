@@ -38,7 +38,7 @@ def _bfs_next_step(position, goal, width, height):
     return None
 
 
-class ExampleMazeBot(Bot):
+class AlainMazeBot(Bot):
     def decide(self, state) -> Move:
         target = _bfs_next_step(state.position, state.goal, state.width, state.height)
         if target is None:
