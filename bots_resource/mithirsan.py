@@ -24,9 +24,11 @@ def _opponent_distances(my_id, opponents, items):
     best = {}
     for item in items:
         closest = min(
-            _step_count(pos, items.position)
-            for bot_id, pos in opponents.items()
-            if bot_id != my_id
+            [
+                _step_count(pos, item.position)
+                for bot_id, pos in opponents.items()
+                if bot_id != my_id
+            ]
         )
         best[item] = closest
     return best
@@ -63,17 +65,17 @@ class MithirsanResourceBot(Bot):
 
         items_distance: dict[Item, int] = dict()
 
-        # opponent_item_distance = _opponent_distances(
-        #    state.self_id,
-        #    state.positions,
-        #    state.items,
-        # )
+        opponent_item_distance = _opponent_distances(
+            state.self_id,
+            state.positions,
+            state.items,
+        )
 
         for item in state.items:
             my_distance: int = _step_count(state.position, item.position)
 
-            # if my_distance > opponent_item_distance.get(item, 0):
-            #     continue
+            if my_distance > opponent_item_distance.get(item, 5):
+                continue
 
             items_distance[item] = my_distance
 
