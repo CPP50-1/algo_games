@@ -1,14 +1,3 @@
-"""Reference bot for the maze race -- shows the minimum needed to
-implement the Bot API against a MazeView.
-
-Strategy: plain breadth-first search over the grid, treating every cell
-transition as cost 1 and completely ignoring the `terrain` weights. This
-finds the path with the fewest cells, which is exactly wrong the moment
-terrain costs vary -- on the default map this bot confidently walks
-straight through the expensive band because it "looks" shortest, and
-loses to anything that instead finds the shortest path *by weight*
-(Dijkstra, or A* with an admissible heuristic).
-"""
 import heapq
 import json
 from collections import deque
@@ -19,24 +8,9 @@ from engine.bot import Bot, Move
 
 class VictorMazeBot(Bot):
     """
-    self_id - - your bot id
-    width, height, turn
-    position - - your(x, y)
-    goal - - the shared target cell
-    busy_for - - turns remaining before you can move again(always 0 when decide() is actually being called on you)
-    terrain - - height x width grid of per - cell movement costs
-    positions - - {bot_id: (x, y)} for every bot still racing
-    
-    
-    visited : [(x, y)] 
-    next_cells = heapq[(weight, (x, y), path)]
-    grid = {(x, y) : [(neighbor, value)]}
-    
-    build grid OK
-    start next_cells with starting pos OK
-    while next_cells : pop next_cell and calculate neighbors + add them to next_cells
-    when reaching objective, return path.
-    Use paths next turns
+    calculate the path to follow in turn 0, then save it to a json in /tmp. Then load the path in subsequent turns,
+    following it.
+    will work with more complex mazes where you could have to go left for the fastest path
     """
 
 
@@ -50,7 +24,7 @@ class VictorMazeBot(Bot):
 
             grid = {}
             w, h = state.width, state.height
-            visited_cells = [state.position]
+            visited_cells = set()
 
             # building grid
             for x in range(w):
@@ -62,14 +36,15 @@ class VictorMazeBot(Bot):
                         if h > y + i >= 0:  # checking up and down cells as neighbors
                             grid[(x, y)].append(((x, y + i), state.terrain[y+i][x]))
 
-
             next_cells = [(0, my_pos, [])]
             heapq.heapify(next_cells)
 
 
             while next_cells:
                 current_cell = heapq.heappop(next_cells)
-                visited_cells.append(current_cell[1])
+                if current_cell[1] in visited_cells:
+                    continue
+                visited_cells.add(current_cell[1])
                 if current_cell[1] == state.goal:
                     # if we reached the goal, we save the path
                     memory.extend(current_cell[2])
