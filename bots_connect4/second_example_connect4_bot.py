@@ -43,7 +43,7 @@ def _would_win(board, column, player):
     return _wins_at(trial, row, column, player)
 
 
-class SecondExampleConnect4Bot(Bot):
+class ExampleConnect4Bot(Bot):
     def decide(self, state) -> int:
         for column in state.legal_columns:
             if _would_win(state.board, column, state.self_id):
