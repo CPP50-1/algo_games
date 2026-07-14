@@ -8,6 +8,7 @@ real lookahead -- it will lose to anything that actually searches the
 game tree a few moves deep (minimax, ideally with alpha-beta pruning
 and a transposition table so repeated positions aren't re-explored).
 """
+
 from engine.bot import Bot
 
 
@@ -43,14 +44,34 @@ def _would_win(board, column, player):
     return _wins_at(trial, row, column, player)
 
 
-class ExampleConnect4Bot(Bot):
+class MyBot(Bot):
     def decide(self, state) -> int:
+        # If I win by placing here, I place here
         for column in state.legal_columns:
             if _would_win(state.board, column, state.self_id):
                 return column
 
+        # If oppo wins by placing here, I place here
         for column in state.legal_columns:
             if _would_win(state.board, column, state.opponent_id):
+                return column
+
+        # If after placing here, oppo wins, then I dont place here
+        for column in state.legal_columns:
+            row = _drop_row(state.board, column)
+            if row is None:
+                continue
+
+            trial = [list(r) for r in state.board]
+            trial[row][column] = state.self_id
+
+            opponent_can_win = False
+            for opp_column in state.legal_columns:
+                if _would_win(trial, opp_column, state.opponent_id):
+                    opponent_can_win = True
+                    break
+
+            if not opponent_can_win:
                 return column
 
         return state.legal_columns[0]

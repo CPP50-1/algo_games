@@ -1,13 +1,10 @@
-"""Reference bot for Connect Four -- shows the minimum needed to
-implement the Bot API against a ConnectFourView.
-
-Strategy: play a winning move if one exists right now; otherwise block
-the opponent's immediate winning move if they have one; otherwise play
-the leftmost legal column. This is a shallow, one-ply heuristic with no
-real lookahead -- it will lose to anything that actually searches the
-game tree a few moves deep (minimax, ideally with alpha-beta pruning
-and a transposition table so repeated positions aren't re-explored).
 """
+Simple improvement on the base bot : will try to fill the center 3 first.
+Yeah that's not good enough for anything more
+"""
+import sys
+from math import ceil, floor
+
 from engine.bot import Bot
 
 
@@ -43,7 +40,7 @@ def _would_win(board, column, player):
     return _wins_at(trial, row, column, player)
 
 
-class ExampleConnect4Bot(Bot):
+class VictorConnect4Bot(Bot):
     def decide(self, state) -> int:
         for column in state.legal_columns:
             if _would_win(state.board, column, state.self_id):
@@ -52,5 +49,15 @@ class ExampleConnect4Bot(Bot):
         for column in state.legal_columns:
             if _would_win(state.board, column, state.opponent_id):
                 return column
+
+        center = floor(state.width/2)
+        if state.turn == 0 or (state.turn == 1 and _drop_row(state.board, center)):
+            return center
+        center_playing_row = _drop_row(state.board, center)+1
+        center_last_player = state.board[center_playing_row][center]
+        if center_last_player == state.self_id:
+            for i in [-1, 1]:
+                if state.board[center_playing_row][center + i] is None:
+                    return center + i
 
         return state.legal_columns[0]
