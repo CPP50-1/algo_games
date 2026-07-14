@@ -8,6 +8,8 @@ module is built to expose. Trainees should be able to beat it easily by
 weighing urgency (deadline minus time-to-reach) alongside distance,
 e.g. with a small heapq of candidate jobs re-ranked every turn.
 """
+import sys
+
 from engine.bot import Bot, Move
 from games.delivery import Job
 
@@ -47,7 +49,7 @@ class VictorDeliveryBot(Bot):
                 if not first_to_job:
                     continue
                 distance_to_complete = abs(job.pickup[0] - job.dropoff[0]) + abs(job.pickup[1] - job.dropoff[0])
-                if job.deadline > distance_to_reach + distance_to_complete:
+                if job.deadline > distance_to_reach + distance_to_complete + state.turn:
                     time_value_ratio = job.value / (distance_to_reach + distance_to_complete)
                     if time_value_ratio > best_ratio:
                         best_ratio = time_value_ratio
