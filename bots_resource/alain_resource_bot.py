@@ -49,6 +49,7 @@ def knapsack_recurse(w, values, weights, n, memo, state_items) -> tuple[int, lis
         memo[n][w] = (no_pick, no_pick_indices)
     return memo[n][w]
 
+
 def knapsack(w, values, weights, state_items) -> tuple[int, list[int]]:
     n = len(values)
     # init memoization table (we memo the pairs (value, index))
@@ -56,7 +57,6 @@ def knapsack(w, values, weights, state_items) -> tuple[int, list[int]]:
     #print(f"knapsack memo={memo}", file=sys.stderr, flush=True)
 
     return knapsack_recurse(w, values, weights, n, memo, state_items)
-
 
 
 def _step_toward(position, target):
@@ -73,6 +73,7 @@ def _step_toward(position, target):
         if dy < 0:
             return Move.UP
     return Move.UP
+
 
 def distance(position1, position2):
     return abs(position1[0] - position2[0]) + abs(position1[1] - position2[1])
