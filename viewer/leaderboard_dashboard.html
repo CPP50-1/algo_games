@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tron arena — leaderboard dashboard</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #15171a;
+    --panel: #1c1f23;
+    --line: #2b2f35;
+    --text: #e7e6e1;
+    --text-dim: #8b8e93;
+    --accent: #f2a623;
+    --gold: #f2a623;
+    --silver: #c7cbd1;
+    --bronze: #c98a4b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px 64px;
+    gap: 28px;
+  }
+  h1 {
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 0;
+  }
+  .subtitle { font-size: 12px; color: var(--text-dim); margin-top: -18px; text-align: center; max-width: 560px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+    width: 100%;
+    max-width: 1200px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .panel h2 {
+    font-size: 13px;
+    font-weight: 500;
+    margin: 0;
+    color: var(--text);
+  }
+  .panel .doc-link { font-size: 11px; color: var(--text-dim); }
+  .panel .doc-link a { color: var(--text-dim); }
+
+  button {
+    background: #22262b;
+    border: 1px solid var(--line);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    align-self: flex-start;
+  }
+  button:hover { border-color: var(--accent); }
+  input[type="file"] { display: none; }
+
+  .filename { font-size: 11px; color: var(--text-dim); word-break: break-all; }
+  .error { font-size: 12px; color: #e2483d; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 5px 8px; }
+  th { color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--line); }
+  tr:not(:last-child) td { border-bottom: 1px solid var(--line); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .rank { color: var(--text-dim); width: 1.5em; }
+  .rank.gold { color: var(--gold); }
+  .rank.silver { color: var(--silver); }
+  .rank.bronze { color: var(--bronze); }
+  .empty-row td { color: var(--text-dim); font-style: italic; }
+
+  #combinedSection {
+    width: 100%;
+    max-width: 700px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 20px;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #combinedSection.visible { display: flex; }
+  #combinedSection h2 {
+    font-size: 13px;
+    font-weight: 500;
+    margin: 0;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  #combinedNote { font-size: 11px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+  <h1>Tron arena — leaderboard dashboard</h1>
+  <div class="subtitle">
+    Load each game's <code>leaderboard.json</code> (from that game's <code>results*/&lt;timestamp&gt;/</code> folder)
+    into its matching panel below to see every ranking side by side.
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div id="combinedSection">
+    <h2>Combined ranking</h2>
+    <div id="combinedNote"></div>
+    <table>
+      <thead>
+        <tr><th class="rank"></th><th>bot</th><th class="num">wins</th><th class="num">losses</th><th class="num">draws</th><th class="num">games</th></tr>
+      </thead>
+      <tbody id="combinedBody"></tbody>
+    </table>
+  </div>
+
+<script>
+const GAMES = [
+  { key: "tron", label: "Tron / light-cycles" },
+  { key: "delivery", label: "Grid delivery" },
+  { key: "connect4", label: "Connect Four" },
+  { key: "resource", label: "Resource-constrained grid" },
+  { key: "maze", label: "Weighted terrain race" },
+];
+
+const loaded = {};   // key -> array of {bot, wins, losses, draws}, only for successfully-loaded panels
+
+function rankClass(index) {
+  if (index === 0) return "rank gold";
+  if (index === 1) return "rank silver";
+  if (index === 2) return "rank bronze";
+  return "rank";
+}
+
+function isValidLeaderboard(data) {
+  return Array.isArray(data) && data.every((row) =>
+    row && typeof row.bot === "string" &&
+    typeof row.wins === "number" && typeof row.losses === "number" && typeof row.draws === "number"
+  );
+}
+
+function buildTable(rows) {
+  if (!rows.length) {
+    return '<table><tbody><tr class="empty-row"><td>no bots in this leaderboard</td></tr></tbody></table>';
+  }
+  const body = rows.map((row, i) => `
+    <tr>
+      <td class="${rankClass(i)}">${i + 1}</td>
+      <td>${row.bot}</td>
+      <td class="num">${row.wins}</td>
+      <td class="num">${row.losses}</td>
+      <td class="num">${row.draws}</td>
+    </tr>
+  `).join("");
+  return `
+    <table>
+      <thead><tr><th class="rank"></th><th>bot</th><th class="num">W</th><th class="num">L</th><th class="num">D</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+  `;
+}
+
+function renderCombined() {
+  const section = document.getElementById("combinedSection");
+  const gamesLoaded = Object.keys(loaded);
+
+  if (gamesLoaded.length < 2) {
+    section.classList.remove("visible");
+    return;
+  }
+
+  const totals = {};  // bot id -> { wins, losses, draws, games }
+  gamesLoaded.forEach((key) => {
+    loaded[key].forEach((row) => {
+      if (!totals[row.bot]) totals[row.bot] = { wins: 0, losses: 0, draws: 0, games: 0 };
+      totals[row.bot].wins += row.wins;
+      totals[row.bot].losses += row.losses;
+      totals[row.bot].draws += row.draws;
+      totals[row.bot].games += 1;
+    });
+  });
+
+  const rows = Object.entries(totals)
+    .map(([bot, t]) => ({ bot, ...t }))
+    .sort((a, b) => (b.wins - a.wins) || (a.losses - b.losses) || (b.draws - a.draws));
+
+  document.getElementById("combinedNote").textContent =
+    `Summed across ${gamesLoaded.length} loaded game${gamesLoaded.length === 1 ? "" : "s"} `
+    + `(${gamesLoaded.map((k) => GAMES.find((g) => g.key === k).label).join(", ")}). `
+    + `A bot only shows up here for the games its id actually appears in -- the "games" column shows how many that was.`;
+
+  const body = rows.map((row, i) => `
+    <tr>
+      <td class="${rankClass(i)}">${i + 1}</td>
+      <td>${row.bot}</td>
+      <td class="num">${row.wins}</td>
+      <td class="num">${row.losses}</td>
+      <td class="num">${row.draws}</td>
+      <td class="num">${row.games}</td>
+    </tr>
+  `).join("");
+  document.getElementById("combinedBody").innerHTML = body || '<tr class="empty-row"><td colspan="6">no bots yet</td></tr>';
+
+  section.classList.add("visible");
+}
+
+function buildPanel(game) {
+  const panel = document.createElement("div");
+  panel.className = "panel";
+
+  const heading = document.createElement("h2");
+  heading.textContent = game.label;
+  panel.appendChild(heading);
+
+  const button = document.createElement("button");
+  button.textContent = "Choose leaderboard.json";
+  panel.appendChild(button);
+
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "application/json";
+  panel.appendChild(fileInput);
+
+  const filenameEl = document.createElement("div");
+  filenameEl.className = "filename";
+  filenameEl.textContent = "No file loaded";
+  panel.appendChild(filenameEl);
+
+  const errorEl = document.createElement("div");
+  errorEl.className = "error";
+  panel.appendChild(errorEl);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "table-wrap";
+  panel.appendChild(tableWrap);
+
+  button.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    errorEl.textContent = "";
+
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+    } catch (err) {
+      errorEl.textContent = `Not valid JSON: ${err.message}`;
+      return;
+    }
+
+    if (!isValidLeaderboard(data)) {
+      errorEl.textContent = "This doesn't look like a leaderboard.json (expected a list of {bot, wins, losses, draws}). "
+        + "Did you pick match_log.json or a replay file by mistake?";
+      return;
+    }
+
+    loaded[game.key] = data;
+    filenameEl.textContent = file.name;
+    tableWrap.innerHTML = buildTable(data);
+    renderCombined();
+  });
+
+  return panel;
+}
+
+const grid = document.getElementById("grid");
+GAMES.forEach((game) => grid.appendChild(buildPanel(game)));
+</script>
+</body>
+</html>

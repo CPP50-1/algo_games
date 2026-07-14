@@ -153,10 +153,16 @@ class ResourceGame(Game):
         for bot_id in self._bot_ids:
             if self._moves_left[bot_id] <= 0:
                 continue
+            self._moves_left[bot_id] -= 1  # a turn passes whether or not the move was valid --
+                                            # otherwise a bot that forfeits every remaining turn
+                                            # (e.g. its process was killed for timing out once)
+                                            # would never exhaust its budget, is_over() would
+                                            # never fire, and the match would run to the
+                                            # max_turns safety valve as a forced draw regardless
+                                            # of the actual score
             move = moves.get(bot_id)
             if not isinstance(move, Move):
-                continue  # forfeit -- no movement, but still counts as your turn passing
-            self._moves_left[bot_id] -= 1
+                continue  # forfeit -- no movement, but the turn (and budget) still counts
             x, y = self._positions[bot_id]
             nx, ny = x + move.dx, y + move.dy
             if 0 <= nx < self.width and 0 <= ny < self.height:

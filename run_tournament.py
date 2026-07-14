@@ -122,6 +122,13 @@ def main() -> None:
     )
     parser.add_argument("--width", type=int, default=21, help="board width")
     parser.add_argument("--height", type=int, default=21, help="board height")
+    parser.add_argument(
+        "--workers", type=int, default=None,
+        help="how many matches to run in parallel (default: number of CPU cores). "
+             "Round-robin matches are independent of each other, so running several "
+             "at once is a large speedup on multi-core machines. Pass 1 to force "
+             "fully sequential execution.",
+    )
     parser.add_argument("--finale", action="store_true", help="also run one all-vs-all free-for-all match")
     args = parser.parse_args()
 
@@ -140,7 +147,8 @@ def main() -> None:
 
     out_dir = _make_run_dir(args.out)
     leaderboard, match_log = round_robin(
-        bots, game_cls, game_kwargs, timeout=args.timeout, replay_dir=str(out_dir / "replays")
+        bots, game_cls, game_kwargs, timeout=args.timeout, replay_dir=str(out_dir / "replays"),
+        max_workers=args.workers,
     )
 
     # encoding="utf-8" explicitly -- don't rely on Windows' locale-

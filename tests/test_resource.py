@@ -64,6 +64,34 @@ def test_budget_exhaustion_stops_movement_but_not_the_match():
     assert start != moved_position or g.width == 1  # sanity: it did move once
 
 
+def test_forfeited_move_still_consumes_budget():
+    """Regression test: a bot that returns None (forfeit) every turn --
+    e.g. because its persistent process died from a single timeout --
+    must still burn through its move budget one turn at a time. If it
+    didn't, that bot's moves_left would freeze forever above zero,
+    is_over() would never fire, and the match would run to the engine's
+    max_turns safety valve as a forced draw regardless of the actual
+    score. See games/resource.py's step() for the fix.
+    """
+    g = ResourceGame(width=20, height=20, num_items=1, move_budget=5)
+    g.setup(["a", "b"])
+    for expected_remaining in (4, 3, 2, 1, 0):
+        g.step({"a": None, "b": Move.UP})  # "a" forfeits every single turn
+        assert g._moves_left["a"] == expected_remaining
+    assert g.is_over()
+
+
+def test_match_ends_naturally_even_if_one_bot_forfeits_the_whole_match():
+    g = ResourceGame(width=20, height=20, num_items=5, move_budget=20)
+    g.setup(["a", "b"])
+    turn = 0
+    while not g.is_over() and turn < 100:  # well above move_budget -- should never be needed
+        g.step({"a": None, "b": Move.RIGHT})
+        turn += 1
+    assert turn == 20  # ended exactly at the budget, not by exhausting the loop cap
+    assert g.is_over()
+
+
 def test_match_ends_only_once_every_bot_is_out_of_budget():
     g = ResourceGame(width=20, height=20, num_items=1, move_budget=3)
     g.setup(["a", "b"])

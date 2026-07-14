@@ -50,6 +50,26 @@ def _find_bot_class(module, module_name: str):
     return candidates
 
 
+def load_bot_class_from_path(path: str):
+    """Loads and returns the single `Bot` subclass defined in the file at
+    `path`. Raises (ImportError or whatever the file itself raised) on
+    any problem -- unlike `load_bots`, this doesn't swallow errors into a
+    list, because callers of this (the per-move sandbox, the persistent
+    per-match worker, and parallel match workers) all need to re-load a
+    single already-known-good bot fresh in a new process, not discover
+    and tolerate broken submissions the way the initial batch load does.
+    """
+    file_path = Path(path)
+    module = _load_module(file_path)
+    candidates = _find_bot_class(module, file_path.stem)
+    if len(candidates) == 0:
+        raise ImportError(f"no Bot subclass found in {path}")
+    if len(candidates) > 1:
+        names = ", ".join(c.__name__ for c in candidates)
+        raise ImportError(f"multiple Bot subclasses found in {path} ({names})")
+    return candidates[0]
+
+
 def load_bots(bots_dir: str) -> Tuple[Dict[str, LoadedBot], List[str]]:
     """Returns (bots, errors).
 
@@ -69,23 +89,13 @@ def load_bots(bots_dir: str) -> Tuple[Dict[str, LoadedBot], List[str]]:
             continue  # underscore-prefixed files are helpers, not bots
 
         try:
-            module = _load_module(path)
+            bot_cls = load_bot_class_from_path(str(path))
         except Exception as exc:  # noqa: BLE001 -- student code, catch everything
-            errors.append(f"{path.name}: failed to import ({exc!r})")
-            continue
-
-        candidates = _find_bot_class(module, path.stem)
-
-        if len(candidates) == 0:
-            errors.append(f"{path.name}: no Bot subclass found")
-            continue
-        if len(candidates) > 1:
-            names = ", ".join(c.__name__ for c in candidates)
-            errors.append(f"{path.name}: multiple Bot subclasses found ({names}) -- keep one per file")
+            errors.append(f"{path.name}: {exc}")
             continue
 
         try:
-            instance = candidates[0]()
+            instance = bot_cls()
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{path.name}: could not instantiate ({exc!r})")
             continue

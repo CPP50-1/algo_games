@@ -1,6 +1,10 @@
-"""Runs a single bot's decide() call in its own subprocess with a hard
-timeout, so a hung, crashing, or resource-hungry bot can never freeze
-the tournament or affect another bot's match.
+"""Runs a single bot's decide() call in its own fresh subprocess with a
+hard timeout, then exits -- a one-shot alternative to
+engine/persistent_sandbox.py, which is what actual matches use (see
+engine/match.py). This one-shot version is now only used by
+engine/validate_ci.py's smoke test, where a single sanity-check call
+against a dummy board is all that's needed and there's no reason to pay
+for a bot's process to stick around afterward.
 
 Implementation note: this uses subprocess.run() with a small runner
 script (engine/bot_runner.py), not Python's multiprocessing module.
@@ -13,13 +17,9 @@ arbitrary folder, since they were never installed as a real importable
 package. subprocess.run avoids the whole problem: the child re-imports
 the bot straight from its file path, and only plain JSON crosses the
 process boundary. Same protection against hangs, and it behaves
-identically on every OS.
-
-This does mean every single turn pays the cost of starting a fresh
-Python interpreter (tens of milliseconds), which is slower than a fork.
-For a classroom tournament of a dozen bots this is a non-issue (a full
-round-robin still finishes in well under a couple of minutes) -- it's a
-deliberate trade of a bit of speed for working correctly everywhere.
+identically on every OS. engine/persistent_sandbox.py follows this same
+"never pickle a live object" rule, just keeps its subprocess alive
+across many calls instead of one.
 
 Actions are game-defined, not hardcoded to any one type: whatever
 decide() returns is converted with the game's own serialize_action /
@@ -68,8 +68,7 @@ def call_with_timeout(
         proc = subprocess.run(
             [sys.executable, _RUNNER],
             input=payload,
-            stdout=subprocess.PIPE,
-            stderr=None,
+            capture_output=True,
             text=True,
             encoding="utf-8",
             timeout=timeout,
